@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.web3.gateway.mapper.SyncStateMapper">
+
+    <select id="getTaskState" resultType="com.web3.gateway.entity.SyncTaskState">
+        SELECT task_name, last_processed_block, updated_at
+        FROM extractor_sync_state
+        WHERE task_name = #{taskName}
+    </select>
+
+    <update id="updateWatermark">
+        UPDATE extractor_sync_state
+        SET last_processed_block = #{blockNumber}, updated_at = CURRENT_TIMESTAMP
+        WHERE task_name = #{taskName}
+    </update>
+
+    <insert id="insertInitialState">
+        INSERT INTO extractor_sync_state (task_name, last_processed_block)
+        VALUES (#{taskName}, #{lastProcessedBlock})
+        ON CONFLICT (task_name) DO NOTHING
+    </insert>
+</mapper>

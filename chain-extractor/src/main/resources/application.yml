@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: extractor
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      retries: 3
+web3:
+  node-url: wss://mainnet.infura.io/ws/v3/YOUR_INFURA_KEY

@@ -1,0 +1,58 @@
+server:
+  port: 8080 # Web 容器端口，Prometheus 将通过这个端口抓取指标
+
+spring:
+  application:
+    name: chain-ingestion-gateway
+
+  # 1. PostgreSQL 数据库配置
+  datasource:
+    # 请替换为你本地的数据库名、用户名和密码
+    url: jdbc:postgresql://localhost:5432/chain_pipeline?currentSchema=gateway
+    username: postgres
+    password: 63382212
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 30000
+
+  # 2. Kafka 生产者配置
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      # 我们在代码里使用 ObjectMapper 序列化了 JSON，所以这里用 StringSerializer 即可
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # 工业级防丢配置：要求所有副本确认后才算发送成功
+      acks: all
+      retries: 3
+
+# 3. MyBatis 配置
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true # 开启驼峰命名自动映射 (如 last_processed_block -> lastProcessedBlock)
+
+# 4. Actuator & Prometheus 监控暴露配置 (核心)
+management:
+  endpoints:
+    web:
+      exposure:
+        # 暴露 health (健康检查) 和 prometheus (指标抓取) 端点
+        include: health, prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      # 为所有指标打上全局标签，方便在 Grafana 中做聚合过滤
+      application: ${spring.application.name}
+
+# 5. 自定义多链节点配置 (供 AbstractEvmIngestionService 读取)
+web3:
+  chains:
+    ethereum: wss://mainnet.infura.io/ws/v3/YOUR_INFURA_KEY
+    bsc: wss://bsc-ws-node.nodedata.org
+    polygon: wss://polygon-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
+
