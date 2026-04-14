@@ -1,27 +1,29 @@
 package com.web3.datacommon.core.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import java.math.BigDecimal;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class RawTransaction {
+    // 多链路由字段
+    private String chainName;
+
     private String txHash;
     private Long blockNumber;
     private String blockHash;
-    private String parentHash;
-    private Long blockTimestamp;
+    private String from;
+    private String to;
 
-    private String fromAddress;
-    private String toAddress;
-    private BigDecimal value;   // 转移的原生 ETH 数量
-    private Long gasUsed;       // 实际消耗的 Gas
-    private Integer status;     // 1: 成功, 0: Reverted (失败)
+    // 核心修改：使用 String 接收 Wei 单位的超大数值，防止精度丢失
+    private String value;
 
-    // 管道控制字段
-    private Integer sign;
-    private Long version;
+    private Long timestamp;
+
+    // 引擎摄入时间
+    private Long ingestionTimestamp;
 }

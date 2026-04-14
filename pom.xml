@@ -13,7 +13,9 @@
         <module>chain-common</module>
         <module>chain-flink-processor</module>
         <module>chain-ingestion-gateway</module>
-        <module>chain-extractor</module> </modules>
+        <module>chain-extractor</module>
+        <module>chain-spark-processor</module>
+    </modules>
 
     <properties>
         <java.version>17</java.version>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.web3.extractor.repository.SyncStateMapper">
+
+    <select id="getHighWatermark" resultType="java.lang.Long">
+        SELECT last_processed_block
+        FROM chain_extractor.extractor_sync_state WHERE task_name = #{taskName}
+    </select>
+
+    <update id="updateHighWatermark">
+        UPDATE chain_extractor.extractor_sync_state SET last_processed_block = #{blockNumber},
+            updated_at = CURRENT_TIMESTAMP
+        WHERE task_name = #{taskName}
+    </update>
+
+    <insert id="initTaskIfNotExists">
+        INSERT INTO chain_extractor.extractor_sync_state (task_name, last_processed_block) VALUES (#{taskName}, #{blockNumber})
+        ON CONFLICT (task_name) DO NOTHING
+    </insert>
+
+</mapper>
