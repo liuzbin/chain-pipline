@@ -1,0 +1,33 @@
+<clickhouse>
+    <remote_servers>
+        <web3_cluster>
+            <shard>
+                <replica>
+                    <host>clickhouse1</host>
+                    <port>9000</port>
+                    <user>default</user>
+                    <password>root</password>
+                </replica>
+            </shard>
+            <shard>
+                <replica>
+                    <host>clickhouse2</host>
+                    <port>9000</port>
+                    <user>default</user>
+                    <password>root</password>
+                </replica>
+            </shard>
+        </web3_cluster>
+    </remote_servers>
+
+    <zookeeper>
+        <node>
+            <host>zookeeper</host>
+            <port>2181</port>
+        </node>
+    </zookeeper>
+
+    <macros>
+        <cluster>web3_cluster</cluster>
+    </macros>
+</clickhouse>

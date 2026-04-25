@@ -68,19 +68,41 @@ services:
     networks:
       - web3-net
 
-  # 5. ClickHouse
-  clickhouse:
+  # 5.1 ClickHouse 节点 1
+  clickhouse1:
     image: clickhouse/clickhouse-server:latest
-    container_name: clickhouse
+    container_name: clickhouse1
+    depends_on:
+      - zookeeper
     ports:
-      - "8123:8123" # HTTP 端口 (用于 DBeaver 等工具连接)
-      - "9000:9000" # Native 端口 (用于 Flink 内部直连)
+      - "8123:8123" # 节点1的 HTTP 端口
+      - "9000:9000" # 节点1的 Native 端口
     environment:
       - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=
-      - CLICKHOUSE_DB=reorg_indexer
+      - CLICKHOUSE_PASSWORD=root
     volumes:
-      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse1-data:/var/lib/clickhouse
+      # 把刚才建的集群配置挂载进去
+      - ./ch-cluster.xml:/etc/clickhouse-server/config.d/ch-cluster.xml
+    networks:
+      - web3-net
+
+  # 5.2 ClickHouse 节点 2
+  clickhouse2:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse2
+    depends_on:
+      - zookeeper
+    ports:
+      - "8124:8123" # 注意：宿主机端口不能冲突，映射成 8124
+      - "9002:9000" # 映射成 9001
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=root
+    volumes:
+      - clickhouse2-data:/var/lib/clickhouse
+      # 同样的集群配置挂载进去
+      - ./ch-cluster.xml:/etc/clickhouse-server/config.d/ch-cluster.xml
     networks:
       - web3-net
 
@@ -123,12 +145,26 @@ services:
     networks:
       - web3-net
 
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=Local-Cluster
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:29092
+    depends_on:
+      - kafka
+    networks:
+      - web3-net
+
 # 统一定义数据卷，保证即使你重启电脑或销毁容器，数据依然存在
 volumes:
   citus-data:
   redis-data:
   kafka-data:
-  clickhouse-data:
+  clickhouse1-data:
+  clickhouse2-data:
   minio-data:
   prometheus-data:
 
