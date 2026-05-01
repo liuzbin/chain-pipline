@@ -21,16 +21,17 @@ public class MdsIngestionJob {
                 // 启用 Delta Lake 扩展
                 .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
                 .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-                // 配置 MinIO S3
-                .config("spark.hadoop.fs.s3a.access.key", "admin")
-                .config("spark.hadoop.fs.s3a.secret.key", "password123")
-                .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9005")
-                .config("spark.hadoop.fs.s3a.path.style.access", "true")
+                // ==========================================
+                // ☁️ 配置真实的 AWS S3 访问凭证
+                // ==========================================
+                .config("spark.hadoop.fs.s3a.access.key", "")
+                .config("spark.hadoop.fs.s3a.secret.key", "")
+                .config("spark.hadoop.fs.s3a.endpoint", "s3.ca-central-1.amazonaws.com")
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
                 .getOrCreate();
 
         // ==========================================
-        // 2. 定义三张核心表的 JSON Schema
+        // 2. 定义三张核心表的 JSON Schema (保持不变)
         // ==========================================
         StructType blockSchema = new StructType()
                 .add("chainName", DataTypes.StringType)
@@ -79,16 +80,17 @@ public class MdsIngestionJob {
         System.out.println("🚀 正在启动 Logs 数据流...");
         startIngestionStream(spark, "topic_raw_logs", logSchema, "logs");
 
-        // 4. 阻塞主线程，等待任意一个流被终止（保持程序持续运行）
-        // 注意：多流场景下不能对单个流 awaitTermination，必须用全局的 awaitAnyTermination
-        System.out.println("✅ 所有数据流启动完毕，正在持续监控并写入 MinIO...");
+        // 4. 阻塞主线程，等待任意一个流被终止
+        System.out.println("✅ 所有数据流启动完毕，正在持续监控并写入 AWS S3...");
         spark.streams().awaitAnyTermination();
     }
 
     /**
-     * 核心写入逻辑抽象：将重复的 Kafka 读取、JSON 解析、Delta 写入过程封装
+     * 核心写入逻辑抽象
      */
     private static void startIngestionStream(SparkSession spark, String topic, StructType schema, String tableName) throws TimeoutException {
+        String targetBucketName = "zhibin-web3-datalake-bronze-217113049221-ca-central-1-an";
+
         spark.readStream()
                 .format("kafka")
                 .option("kafka.bootstrap.servers", "localhost:9092")
@@ -102,15 +104,15 @@ public class MdsIngestionJob {
                 .select("data.*")
                 // 3. 增加动态分区字段 dt (Date)
                 .withColumn("dt", from_unixtime(col("timestamp"), "yyyy-MM-dd"))
-                // 4. 写入 Delta 湖床
+                // 4. 写入 Delta 湖床到 AWS S3
                 .writeStream()
                 .format("delta")
                 .outputMode("append")
                 .partitionBy("chainName", "dt")
-                // ⚠️ 极其关键：不同流的 Checkpoint 目录必须严格物理隔离
-                .option("checkpointLocation", "s3a://web3-datalake/checkpoints/" + tableName)
-                .option("path", "s3a://web3-datalake/bronze/" + tableName)
+                // ⚠️ 极其关键：不同流的 Checkpoint 目录必须严格物理隔离，现已指向真实 S3
+                .option("checkpointLocation", "s3a://" + targetBucketName + "/checkpoints/" + tableName)
+                .option("path", "s3a://" + targetBucketName + "/bronze/" + tableName)
                 .trigger(Trigger.ProcessingTime("10 seconds"))
-                .start(); // start() 是非阻塞的，会立刻返回
+                .start();
     }
 }
