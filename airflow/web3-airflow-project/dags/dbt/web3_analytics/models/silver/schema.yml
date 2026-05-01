@@ -1,0 +1,15 @@
+version: 2
+
+models:
+  - name: stg_transactions
+    description: "清洗后的以太坊/区块链基础交易表"
+    columns:
+      - name: tx_value
+        description: "交易金额"
+        tests:
+          - not_null  # 测试：金额绝对不能是空的！
+      - name: chain_name
+        description: "公链名称"
+        tests:
+          - accepted_values:
+              values: ['eth', 'bsc', 'polygon'] # 测试：链的名字只能是这三个，出现别的立刻报警！

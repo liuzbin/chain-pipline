@@ -1,0 +1,14 @@
+web3_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: ""
+      user: ""
+      password: ""
+      role: ""
+      database: ""
+      warehouse: "WEB3_COMPUTE_WH"
+      schema: "PUBLIC"
+      threads: 4
+      client_session_keep_alive: False

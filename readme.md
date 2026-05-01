@@ -1,32 +1,71 @@
-第一部分：原始数据获取。这里我之前写了一个extractor，现在改名叫chain ingestion gateway，用来不断生成假数据写入kafka，数据分三个topic：block，transaction，logs。这里势必是要大改，我们看下获取真实链上数据是怎么做的，成本高不高，如果高的话，我倾向于暂时搁置，依然通过造假数据的方式先提供一定的供给实验的数据。
-    不需要用假数据：去注册 Alchemy 或 QuickNode 或 Infura（北美三大 Web3 基础设施提供商）。它们的**免费套餐（Free Tier）**每个月能提供几百万次的 API 调用额度。对于你目前只监控“Uniswap V3”这一个合约的 MVP 来说，免费额度完全花不完！写一段 Python 或 Java 代码，连上它们的 WebSocket 或 HTTP RPC，实打实地抓取真实的 Block 和 Logs 写入 Kafka。
-        V1
-            ingestion gateway
-                1. 高可用与流量控制
-                    多节点池化 (Node Pooling)， 自适应限流与退避 (Exponential Backoff)
-                2. 游标管理与断点续传 (Cursor Management & Checkpointing)
-                    **高水位线记录 (High-water Mark)，无缝重启**
-                3. 应对链上独有灾难：区块重组处理 (Chain Reorg Handling)  
-                    **延迟确认机制 (Block Confirmations)**
-                4. 极致可靠的下行投递 (Reliable Upstream Delivery)
-                   生产者池与异步发送，防丢配置，优雅降级 (Circuit Breaking)
-                5. 探针与可观测性 (Observability)
-                   暴露 Prometheus Metrics 接口（通常是 /metrics），必须监控的指标
-第二部分：实时数据流。目前的实时数据流是从kafka->flink->clickhouse，这里到时候clickhouse数据结构应该需要改一下，包括flink这里要如何对数据进行处理也需要考虑。
-    坚决贯彻我们之前讨论的 ELT 原则。不要在 Flink 和 Spark 里做复杂的业务解析（比如算换了多少币）。
-    只需提取公共元数据（哈希、时间戳、地址），剩下的 topics 和 data 原封不动塞进大 JSON 字段。你的 MinIO（Bronze层）和 ClickHouse 表结构应该非常精简，几个强类型列 + 一两个巨大的 JSON 负载列。
+# Chain-Pipeline: A High-Performance Web3 Data Lakehouse
 
-第三部分：批量写入数据流。这里目前是kafka->spark->S3(MinIO)，一样，spark这里需要如何做数据的处理，以及MInIO的结构是否需要做调整，需要看下。
+Chain-Pipeline is a robust, modular data engineering project designed to handle high-throughput Web3 transaction data. It implements a **Lambda Architecture** to provide both real-time insights and deep historical analysis, leveraging a Modern Data Stack (MDS).
 
-第四部分: MDS部分，S3的数据接入Snowflake，并通过dbt数据进行必要的清洗，便于应用端的业务分析
+## 📊 Business Data Flow
 
-第五部分：所谓的应用端的前置部分，也就是图数据库的搭建，我们需要用dbt解析数据后写入图数据库，这个持续写入的框架用什么我们还没有讨论过，我之前用过flink 从kakfa写数据到华为的GES图数据库，如果是北美这边的技术栈，我不太清楚用什么，这个到时候还需要具体讨论一下啊
-    图数据库霸主：在北美，Neo4j 是图数据库无可争议的绝对主流（占据垄断地位），其次是开源的 TigerGraph。Hackathon 比赛首选 Neo4j，它有免费的桌面版（Neo4j Desktop）和云托管版（AuraDB Free），查询语言 Cypher 非常强大且易读。
-    写入管道（Reverse ETL）：既然你的“干净数据（点和边）”已经通过 dbt 在 Snowflake（Gold层）里算好了，最标准的北美做法不是用 Flink 从 Kafka 再洗一遍，而是直接从 Snowflake 导数据到 Neo4j。
-    具体做法：对于 MVP，写个简单的 Python 脚本（搭配 Apache Airflow 调度），每天跑一次，通过 Snowflake 的 JDBC 把新增的 Gold 层数据拉出来，用 Neo4j 的官方 Python Driver 批量写入图数据库。这就实现了完整的数仓闭环。
+> **[Insert Business Data Flow Diagram Here]**
+![Business Data Flow](./images/business-flow.png)`
 
-第六部分：真正的应用层部分，结合图数据库进行关系的解析获取热钱包图谱关系，这里应该是一个强算法强业务逻辑的部分。
-    前期不要碰太难的图机器学习（GNN）。用 Neo4j 自带的图数据科学库（GDS），跑一下最基础的 PageRank（找出资金流向的核心节点）或 Connected Components（发现背后属于同一个主人的钱包集群），就足够惊艳全场了。
+The system routes unified API inputs into a bifurcated pipeline: a speed layer for real-time alerting and a batch layer for deep historical transformation.
 
-第七部分: 前端展示。前端的构图强依赖于第六部分的逻辑梳理，因此这个只能最后再做。
-    北美最爱用的关系图谱前端库是 React Flow，或者用底层的 D3.js 如果你想做高度定制的力导向图。
+## 🏗 Technical Architecture
+
+![Technical Architecture](./images/data-archi.png)
+
+The pipeline is decoupled into several core modules to ensure scalability and maintainability:
+
+* **Ingestion Layer**: `chain-ingestion-gateway` handles data acquisition via external APIs and streams raw JSON events into **Apache Kafka**.
+* **Speed Layer (Real-time)**: `chain-flink-processor` consumes Kafka streams for low-latency processing and sinks data into **ClickHouse** for instant OLAP analysis.
+* **Batch Layer (Offline)**: `chain-spark-processor` performs micro-batch ingestion from Kafka, converting data into highly compressed **Parquet** files stored in **AWS S3**.
+* **Warehouse & Transformation**: **Snowflake** acts as the central compute engine, accessing S3 via External Stages. **dbt (Data Build Tool)** implements a Medallion Architecture (Bronze, Silver, Gold) for structured data modeling.
+* **Orchestration**: **Apache Airflow** manages the end-to-end workflow, utilizing **Astronomer Cosmos** to dynamically render dbt models as Airflow tasks.
+
+## 📂 Project Structure
+
+```text
+chain-pipeline/
+├── chain-common/             # Shared utilities and POJOs
+├── chain-ingestion-gateway/  # API-based data ingestion and Kafka producer
+├── chain-flink-processor/    # Real-time streaming logic (Kafka to ClickHouse)
+├── chain-spark-processor/    # Batch processing logic (Kafka to S3)
+├── docker-compose.yml        # Local infrastructure orchestration
+└── pom.xml                   # Project dependencies (Maven)
+```
+
+## 🚀 Future Evolution Roadmap
+
+This project is currently in its **MVP (Minimum Viable Product)** phase. We have identified a clear trajectory for scaling the system and increasing business value:
+
+1.  **From Ingestion to API Gateway**: The `chain-ingestion-gateway` module will evolve into a full-featured API Gateway. Beyond data fetching, it will incorporate advanced routing, authentication, and rate-limiting to serve as a secure entry point for all blockchain data.
+2.  **Real-time Monitoring & Alerting**: We plan to implement specific business logic within the `chain-flink-processor` to build a real-time monitoring system. This will enable instant alerts for anomalous on-chain activities (e.g., flash loan attacks or large-scale transfers).
+3.  **Snowflake Performance Optimization**: As data volume scales, we will focus on leveraging Snowflake’s advanced features—such as clustering keys, materialized views, and search optimization services—to ensure cost-effective query performance.
+4.  **Advanced dbt Modeling & Governance**: We will enrich the current data flows with more complex business logic and relationships, fully utilizing dbt's testing, documentation, and macro capabilities to demonstrate best-in-class data governance.
+5.  **Smart Money & Whale Tracking**: To pivot the MDS layer toward high-value business use cases, we aim to implement a "Whale Wallet Tracking" system, identifying and analyzing the behavior of influential blockchain participants to generate actionable alpha.
+
+## 🛠 Tech Stack
+
+* **Languages**: Java, SQL, Python
+* **Streaming**: Apache Kafka, Apache Flink
+* **Batch Processing**: Apache Spark
+* **Storage & Lakehouse**: AWS S3 (Data Lake), ClickHouse (Real-time OLAP)
+* **Data Warehouse**: Snowflake
+* **Transformation**: dbt Core
+* **Orchestration**: Apache Airflow, Astronomer Cosmos
+* **Infrastructure**: Docker & Docker Compose
+
+## 🔧 Getting Started
+
+### Prerequisites
+* Docker & Docker Compose
+* Java 11+ & Maven
+* Snowflake Account (with S3 integration configured)
+
+### Setup & Run
+1.  **Infrastructure**: Run `docker-compose up -d` to start Kafka, ClickHouse, and Airflow.
+2.  **Ingestion**: Navigate to `chain-ingestion-gateway` and run the Spring Boot application.
+3.  **Processors**: Deploy Spark and Flink jobs as per the documentation in their respective directories.
+4.  **Orchestration**: Access Airflow UI at `http://localhost:8080` to trigger the `cosmos_web3_smart_money_pipeline`.
+
+---
+*Developed as a modular framework for scalable Web3 data processing.*
